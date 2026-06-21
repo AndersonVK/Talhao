@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, calcularSemanaAtual } from '../db/database'
 import { TaskItem } from '../components/TaskItem'
-import { TipoBadge } from '../components/TipoDot'
+import { useToast } from '../components/Toast'
 import { useMemo, useState } from 'react'
 import { format, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -104,7 +104,11 @@ function SemanaTimeline({ semanaAtual, tarefas, modelos, onDone }) {
 }
 
 export function DetalheArea({ areaId, onNavigate }) {
+  const toast = useToast()
   const [refresh, setRefresh] = useState(0)
+  const [editando, setEditando] = useState(false)
+  const [editNome, setEditNome] = useState('')
+  const [editQtd, setEditQtd] = useState('')
   const area = useLiveQuery(() => db.areas.get(areaId), [areaId])
   const cicloAtivo = useLiveQuery(
     () => db.ciclos.where({ area_id: areaId, status: 'ativo' }).first(),
@@ -122,6 +126,22 @@ export function DetalheArea({ areaId, onNavigate }) {
 
   if (!area) return <div className="page"><div style={{ color: 'var(--text-muted)', marginTop: 40, textAlign: 'center' }}>Carregando…</div></div>
 
+  function abrirEdicao() {
+    setEditNome(area.nome)
+    setEditQtd(String(area.qtd_plantas))
+    setEditando(true)
+  }
+
+  async function salvarEdicao(e) {
+    e.preventDefault()
+    const nome = editNome.trim()
+    const qtd = Number(editQtd)
+    if (!nome) return
+    await db.areas.update(areaId, { nome, qtd_plantas: qtd || area.qtd_plantas })
+    toast('✓ Área atualizada.')
+    setEditando(false)
+  }
+
   const semanaAtual = cicloAtivo ? calcularSemanaAtual(cicloAtivo.data_poda) : 0
   const progresso = Math.round((semanaAtual / 36) * 100)
   const tarefasFeitas = tarefas?.filter((t) => t.status === 'feito').length ?? 0
@@ -137,10 +157,50 @@ export function DetalheArea({ areaId, onNavigate }) {
           >
             ← Voltar
           </button>
-          <div className="page-title">{area.nome}</div>
-          <div className="page-subtitle">{area.qtd_plantas} plantas</div>
+          {editando ? (
+            <form onSubmit={salvarEdicao} style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+              <input
+                className="form-control"
+                value={editNome}
+                onChange={(e) => setEditNome(e.target.value)}
+                placeholder="Nome da área"
+                autoFocus
+                style={{ fontSize: 17, fontWeight: 700, padding: '8px 10px' }}
+              />
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  className="form-control"
+                  type="number"
+                  value={editQtd}
+                  onChange={(e) => setEditQtd(e.target.value)}
+                  placeholder="Qtd. plantas"
+                  min="1"
+                  style={{ width: 130 }}
+                />
+                <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>plantas</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-primary btn-sm" type="submit">Salvar</button>
+                <button className="btn btn-ghost btn-sm" type="button" onClick={() => setEditando(false)}>Cancelar</button>
+              </div>
+            </form>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div className="page-title">{area.nome}</div>
+                <button
+                  onClick={abrirEdicao}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13, padding: '2px 4px' }}
+                  title="Editar área"
+                >
+                  ✎
+                </button>
+              </div>
+              <div className="page-subtitle">{area.qtd_plantas} plantas</div>
+            </>
+          )}
         </div>
-        {cicloAtivo && (
+        {!editando && cicloAtivo && (
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--green-bright)', lineHeight: 1 }}>
               {semanaAtual}
