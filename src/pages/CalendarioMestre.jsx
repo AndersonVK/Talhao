@@ -3,6 +3,7 @@ import { db, TIPOS_TAREFA } from '../db/database'
 import { useState } from 'react'
 import { useToast } from '../components/Toast'
 import { TipoBadge } from '../components/TipoDot'
+import { BackupSection } from '../components/BackupSection'
 
 const EMPTY_FORM = {
   semana_inicio: '',
@@ -230,6 +231,8 @@ export function CalendarioMestre() {
           </div>
         ))
       )}
+
+      <BackupSection />
     </div>
   )
 }

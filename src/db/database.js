@@ -113,6 +113,43 @@ export function calcularSemanaAtual(dataPoda) {
   return Math.min(Math.floor(diffDias / 7) + 1, 36)
 }
 
+export const BACKUP_VERSION = 1
+
+export async function exportarDados() {
+  const [areas, tarefas_modelo, ciclos, tarefas_geradas] = await Promise.all([
+    db.areas.toArray(),
+    db.tarefas_modelo.toArray(),
+    db.ciclos.toArray(),
+    db.tarefas_geradas.toArray(),
+  ])
+  return {
+    versao: BACKUP_VERSION,
+    exportado_em: new Date().toISOString(),
+    areas,
+    tarefas_modelo,
+    ciclos,
+    tarefas_geradas,
+  }
+}
+
+export async function importarDados(backup) {
+  if (!backup?.versao || !backup?.areas) {
+    throw new Error('Arquivo inválido ou incompatível.')
+  }
+
+  await db.transaction('rw', [db.areas, db.tarefas_modelo, db.ciclos, db.tarefas_geradas], async () => {
+    await db.areas.clear()
+    await db.tarefas_modelo.clear()
+    await db.ciclos.clear()
+    await db.tarefas_geradas.clear()
+
+    if (backup.areas?.length) await db.areas.bulkAdd(backup.areas)
+    if (backup.tarefas_modelo?.length) await db.tarefas_modelo.bulkAdd(backup.tarefas_modelo)
+    if (backup.ciclos?.length) await db.ciclos.bulkAdd(backup.ciclos)
+    if (backup.tarefas_geradas?.length) await db.tarefas_geradas.bulkAdd(backup.tarefas_geradas)
+  })
+}
+
 export async function atualizarStatusAtrasadas() {
   const hoje = new Date().toISOString().split('T')[0]
   const pendentes = await db.tarefas_geradas
