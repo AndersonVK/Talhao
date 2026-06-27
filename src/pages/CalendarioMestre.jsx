@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, TIPOS_TAREFA } from '../db/database'
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useToast } from '../components/Toast'
 import { TipoBadge } from '../components/TipoDot'
 import { BackupSection } from '../components/BackupSection'
@@ -20,6 +20,7 @@ export function CalendarioMestre() {
   const [editId, setEditId] = useState(null)
   const [showForm, setShowForm] = useState(false)
   const [erro, setErro] = useState('')
+  const formRef = useRef(null)
 
   function resetForm() {
     setForm(EMPTY_FORM)
@@ -38,6 +39,7 @@ export function CalendarioMestre() {
     })
     setEditId(m.id)
     setShowForm(true)
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
   }
 
   async function salvar(e) {
@@ -87,7 +89,7 @@ export function CalendarioMestre() {
       </div>
 
       {showForm && (
-        <div className="card card-elevated fade-in" style={{ marginBottom: 16 }}>
+        <div ref={formRef} className="card card-elevated fade-in" style={{ marginBottom: 16 }}>
           <div style={{ fontWeight: 700, marginBottom: 12, color: 'var(--green-bright)' }}>
             {editId ? 'Editar tarefa' : 'Nova tarefa no calendário'}
           </div>
