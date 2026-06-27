@@ -142,6 +142,17 @@ export function DetalheArea({ areaId, onNavigate }) {
     setEditando(false)
   }
 
+  async function removerCicloAtivo() {
+    if (!cicloAtivo) return
+    const confirmar = window.confirm(
+      `Remover o ciclo ativo de ${area.nome}?\n\nIsso apaga a poda registrada e todas as tarefas geradas. A área voltará sem ciclo para você recomeçar.\n\nEsta ação não pode ser desfeita.`
+    )
+    if (!confirmar) return
+    await db.tarefas_geradas.where('ciclo_id').equals(cicloAtivo.id).delete()
+    await db.ciclos.delete(cicloAtivo.id)
+    toast('Ciclo removido. Registre uma nova poda para recomeçar.')
+  }
+
   const semanaAtual = cicloAtivo ? calcularSemanaAtual(cicloAtivo.data_poda) : 0
   const progresso = Math.round((semanaAtual / 36) * 100)
   const tarefasFeitas = tarefas?.filter((t) => t.status === 'feito').length ?? 0
@@ -224,7 +235,16 @@ export function DetalheArea({ areaId, onNavigate }) {
             <div className="progress-bar">
               <div className="progress-fill" style={{ width: `${progresso}%` }} />
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>{progresso}% do ciclo</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{progresso}% do ciclo</div>
+              <button
+                className="btn btn-danger btn-sm"
+                style={{ fontSize: 11, padding: '3px 10px' }}
+                onClick={removerCicloAtivo}
+              >
+                Remover ciclo
+              </button>
+            </div>
           </div>
 
           {semanaAtual >= 35 && (
