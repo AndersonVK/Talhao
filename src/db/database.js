@@ -93,6 +93,49 @@ export async function gerarTarefas(cicloId, dataPoda, modelosTarefa) {
   await db.tarefas_geradas.bulkAdd(tarefas)
 }
 
+export async function sincronizarModeloComCiclosAtivos(modelo) {
+  const ciclosAtivos = await db.ciclos.where('status').equals('ativo').toArray()
+
+  for (const ciclo of ciclosAtivos) {
+    const diasInicio = (modelo.semana_inicio - 1) * 7
+    const diasFim = (modelo.semana_fim - 1) * 7 + 6
+    const dataInicio = new Date(ciclo.data_poda)
+    dataInicio.setDate(dataInicio.getDate() + diasInicio)
+    const dataFim = new Date(ciclo.data_poda)
+    dataFim.setDate(dataFim.getDate() + diasFim)
+
+    const dataInicioStr = dataInicio.toISOString().split('T')[0]
+    const dataFimStr = dataFim.toISOString().split('T')[0]
+
+    const existente = await db.tarefas_geradas
+      .where({ ciclo_id: ciclo.id, tarefa_modelo_id: modelo.id })
+      .first()
+
+    if (!existente) {
+      // Nova tarefa no calendário — adiciona ao ciclo
+      await db.tarefas_geradas.add({
+        ciclo_id: ciclo.id,
+        tarefa_modelo_id: modelo.id,
+        data_prevista_inicio: dataInicioStr,
+        data_prevista_fim: dataFimStr,
+        data_realizada: null,
+        status: 'pendente',
+        observacao: '',
+      })
+    } else if (existente.status !== 'feito') {
+      // Tarefa editada e ainda não feita — atualiza as datas
+      await db.tarefas_geradas.update(existente.id, {
+        data_prevista_inicio: dataInicioStr,
+        data_prevista_fim: dataFimStr,
+        status: 'pendente',
+      })
+    }
+    // Se já está 'feito', não mexe
+  }
+
+  return ciclosAtivos.length
+}
+
 export async function registrarPoda(areaId, dataPoda) {
   const modelos = await db.tarefas_modelo.toArray()
   const cicloId = await db.ciclos.add({

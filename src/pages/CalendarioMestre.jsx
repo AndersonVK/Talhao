@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, TIPOS_TAREFA } from '../db/database'
+import { db, TIPOS_TAREFA, sincronizarModeloComCiclosAtivos } from '../db/database'
 import { useState, useRef } from 'react'
 import { useToast } from '../components/Toast'
 import { TipoBadge } from '../components/TipoDot'
@@ -58,14 +58,26 @@ export function CalendarioMestre() {
       descricao: form.descricao.trim(),
     }
 
+    let modeloId = editId
     if (editId) {
       await db.tarefas_modelo.update(editId, data)
       toast('✓ Tarefa atualizada.')
     } else {
-      await db.tarefas_modelo.add(data)
+      modeloId = await db.tarefas_modelo.add(data)
       toast('✓ Tarefa adicionada ao calendário.')
     }
     resetForm()
+
+    const sincronizar = window.confirm(
+      'Deseja aplicar esta alteração em todas as áreas com ciclo ativo?\n\n' +
+      '• Tarefas ainda não realizadas terão as datas recalculadas.\n' +
+      '• Tarefas já marcadas como "feito" não serão alteradas.'
+    )
+    if (sincronizar) {
+      const modelo = await db.tarefas_modelo.get(modeloId)
+      const qtd = await sincronizarModeloComCiclosAtivos(modelo)
+      toast(`✓ Atualizado em ${qtd} área${qtd !== 1 ? 's' : ''} ativa${qtd !== 1 ? 's' : ''}.`)
+    }
   }
 
   async function excluir(id) {
