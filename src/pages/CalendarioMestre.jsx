@@ -105,7 +105,7 @@ export function CalendarioMestre() {
                   onChange={(e) => setForm((f) => ({
                     ...f,
                     semana_inicio: e.target.value,
-                    semana_fim: f.semana_fim || e.target.value,
+                    semana_fim: f.semana_fim === f.semana_inicio ? e.target.value : f.semana_fim,
                   }))}
                 />
               </div>
