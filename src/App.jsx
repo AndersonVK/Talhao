@@ -102,7 +102,9 @@ export default function App() {
         {/* Main content */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
           {showDetalhe ? (
-            <DetalheArea key={areaDetalhe} areaId={areaDetalhe} onNavigate={navigate} />
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+              <DetalheArea key={areaDetalhe} areaId={areaDetalhe} onNavigate={navigate} />
+            </div>
           ) : (
             <>
               <div style={{ display: tab === 'painel' ? 'flex' : 'none', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
