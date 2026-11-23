@@ -4,6 +4,7 @@ import { useState, useRef } from 'react'
 import { useToast } from '../components/Toast'
 import { TipoBadge } from '../components/TipoDot'
 import { BackupSection } from '../components/BackupSection'
+import { ContaSection } from '../components/ContaSection'
 
 const EMPTY_FORM = {
   semana_inicio: '',
@@ -49,6 +50,7 @@ export function CalendarioMestre() {
     const sf = Number(form.semana_fim)
     if (!form.titulo.trim()) { setErro('Informe o título.'); return }
     if (!si || si < 1 || si > 36) { setErro('Semana de início deve ser entre 1 e 36.'); return }
+    if (sf > 36) { setErro('Semana fim deve ser no máximo 36.'); return }
     const sfFinal = sf >= si ? sf : si
     const data = {
       semana_inicio: si,
@@ -246,6 +248,7 @@ export function CalendarioMestre() {
         ))
       )}
 
+      <ContaSection />
       <BackupSection />
     </div>
   )

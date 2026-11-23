@@ -1,13 +1,66 @@
 import Dexie from 'dexie'
 
-export const db = new Dexie('TalhaoGoiaba')
+// Banco local (cache offline). IDs são UUIDs gerados no aparelho, para que
+// registros criados sem internet possam ser sincronizados depois com o Supabase.
+export const db = new Dexie('TalhaoGoiabaV2')
 
 db.version(1).stores({
-  areas: '++id, nome',
-  tarefas_modelo: '++id, semana_inicio, semana_fim, tipo',
-  ciclos: '++id, area_id, status, data_poda',
-  tarefas_geradas: '++id, ciclo_id, tarefa_modelo_id, status, data_prevista_inicio',
+  areas: 'id, ordem, dirty',
+  tarefas_modelo: 'id, semana_inicio, dirty',
+  ciclos: 'id, area_id, status, dirty',
+  tarefas_geradas: 'id, ciclo_id, tarefa_modelo_id, status, data_prevista_inicio, dirty',
+  tombstones: 'key, tabela',
 })
+
+// Tabelas sincronizadas, em ordem de dependência (pais antes dos filhos)
+export const TABELAS_SYNC = ['areas', 'tarefas_modelo', 'ciclos', 'tarefas_geradas']
+
+export const novoId = () => crypto.randomUUID()
+
+const emSync = (trans) => trans?.source === 'sync'
+
+// Hooks: toda escrita local marca o registro como pendente de envio (dirty),
+// e toda exclusão local gera um "tombstone" para propagar a exclusão ao servidor.
+// Escritas feitas pelo próprio sync (trans.source === 'sync') são ignoradas.
+const listeners = new Set()
+export const onLocalChange = (fn) => {
+  listeners.add(fn)
+  return () => listeners.delete(fn)
+}
+const avisarMudanca = () => listeners.forEach((fn) => fn())
+
+for (const nome of TABELAS_SYNC) {
+  const tabela = db[nome]
+
+  tabela.hook('creating', function (primKey, obj, trans) {
+    if (emSync(trans)) return
+    obj.dirty = 1
+    obj.local_rev = 1
+    trans.on('complete', avisarMudanca)
+    if (primKey === undefined) return novoId()
+  })
+
+  tabela.hook('updating', function (mods, primKey, obj, trans) {
+    if (emSync(trans)) return
+    trans.on('complete', avisarMudanca)
+    return { dirty: 1, local_rev: (obj.local_rev || 0) + 1 }
+  })
+
+  tabela.hook('deleting', function (primKey, obj, trans) {
+    if (emSync(trans)) return
+    trans.on('complete', () => {
+      db.tombstones.put({ key: `${nome}:${primKey}`, tabela: nome, id: primKey }).then(avisarMudanca)
+    })
+  })
+}
+
+// Executa escritas sem marcar como pendentes (usado pelo sync ao aplicar dados do servidor)
+export function transacaoSync(modo, tabelas, fn) {
+  return db.transaction(modo, tabelas, async () => {
+    Dexie.currentTransaction.source = 'sync'
+    return fn()
+  })
+}
 
 export const TIPOS_TAREFA = {
   poda: { label: 'Poda', cor: '#86efac' },
@@ -29,7 +82,7 @@ export const AREAS_INICIAIS = [
   { nome: 'Área G', qtd_plantas: 388 },
   { nome: 'Área H', qtd_plantas: 390 },
   { nome: 'Área I', qtd_plantas: 380 },
-]
+].map((a, i) => ({ ...a, ordem: i + 1 }))
 
 export const TAREFAS_MODELO_SEED = [
   {
@@ -62,33 +115,37 @@ export const TAREFAS_MODELO_SEED = [
   },
 ]
 
-export async function inicializarDados() {
-  const qtdAreas = await db.areas.count()
-  if (qtdAreas > 0) return
-
+// Só deve ser chamada DEPOIS da primeira sincronização: se o servidor já tem
+// dados, eles chegam pelo pull; só semeia quando tudo está realmente vazio.
+export async function semearDadosIniciais() {
+  if ((await db.areas.count()) > 0) return false
   await db.areas.bulkAdd(AREAS_INICIAIS)
   await db.tarefas_modelo.bulkAdd(TAREFAS_MODELO_SEED)
+  return true
+}
+
+function calcularDatas(dataPoda, modelo) {
+  const diasInicio = (modelo.semana_inicio - 1) * 7
+  const diasFim = (modelo.semana_fim - 1) * 7 + 6
+  const dataInicio = new Date(dataPoda)
+  dataInicio.setDate(dataInicio.getDate() + diasInicio)
+  const dataFim = new Date(dataPoda)
+  dataFim.setDate(dataFim.getDate() + diasFim)
+  return {
+    data_prevista_inicio: dataInicio.toISOString().split('T')[0],
+    data_prevista_fim: dataFim.toISOString().split('T')[0],
+  }
 }
 
 export async function gerarTarefas(cicloId, dataPoda, modelosTarefa) {
-  const tarefas = modelosTarefa.map((modelo) => {
-    const diasInicio = (modelo.semana_inicio - 1) * 7
-    const diasFim = (modelo.semana_fim - 1) * 7 + 6
-    const dataInicio = new Date(dataPoda)
-    dataInicio.setDate(dataInicio.getDate() + diasInicio)
-    const dataFim = new Date(dataPoda)
-    dataFim.setDate(dataFim.getDate() + diasFim)
-
-    return {
-      ciclo_id: cicloId,
-      tarefa_modelo_id: modelo.id,
-      data_prevista_inicio: dataInicio.toISOString().split('T')[0],
-      data_prevista_fim: dataFim.toISOString().split('T')[0],
-      data_realizada: null,
-      status: 'pendente',
-      observacao: '',
-    }
-  })
+  const tarefas = modelosTarefa.map((modelo) => ({
+    ciclo_id: cicloId,
+    tarefa_modelo_id: modelo.id,
+    ...calcularDatas(dataPoda, modelo),
+    data_realizada: null,
+    status: 'pendente',
+    observacao: '',
+  }))
 
   await db.tarefas_geradas.bulkAdd(tarefas)
 }
@@ -97,15 +154,7 @@ export async function sincronizarModeloComCiclosAtivos(modelo) {
   const ciclosAtivos = await db.ciclos.where('status').equals('ativo').toArray()
 
   for (const ciclo of ciclosAtivos) {
-    const diasInicio = (modelo.semana_inicio - 1) * 7
-    const diasFim = (modelo.semana_fim - 1) * 7 + 6
-    const dataInicio = new Date(ciclo.data_poda)
-    dataInicio.setDate(dataInicio.getDate() + diasInicio)
-    const dataFim = new Date(ciclo.data_poda)
-    dataFim.setDate(dataFim.getDate() + diasFim)
-
-    const dataInicioStr = dataInicio.toISOString().split('T')[0]
-    const dataFimStr = dataFim.toISOString().split('T')[0]
+    const datas = calcularDatas(ciclo.data_poda, modelo)
 
     const existente = await db.tarefas_geradas
       .where({ ciclo_id: ciclo.id, tarefa_modelo_id: modelo.id })
@@ -116,19 +165,14 @@ export async function sincronizarModeloComCiclosAtivos(modelo) {
       await db.tarefas_geradas.add({
         ciclo_id: ciclo.id,
         tarefa_modelo_id: modelo.id,
-        data_prevista_inicio: dataInicioStr,
-        data_prevista_fim: dataFimStr,
+        ...datas,
         data_realizada: null,
         status: 'pendente',
         observacao: '',
       })
     } else if (existente.status !== 'feito') {
       // Tarefa editada e ainda não feita — atualiza as datas
-      await db.tarefas_geradas.update(existente.id, {
-        data_prevista_inicio: dataInicioStr,
-        data_prevista_fim: dataFimStr,
-        status: 'pendente',
-      })
+      await db.tarefas_geradas.update(existente.id, { ...datas, status: 'pendente' })
     }
     // Se já está 'feito', não mexe
   }
@@ -159,38 +203,104 @@ export function calcularSemanaAtual(dataPoda) {
 export const BACKUP_VERSION = 1
 
 export async function exportarDados() {
-  const [areas, tarefas_modelo, ciclos, tarefas_geradas] = await Promise.all([
-    db.areas.toArray(),
-    db.tarefas_modelo.toArray(),
-    db.ciclos.toArray(),
-    db.tarefas_geradas.toArray(),
-  ])
+  const [areas, tarefas_modelo, ciclos, tarefas_geradas] = await Promise.all(
+    TABELAS_SYNC.map((t) => db[t].toArray())
+  )
+  const limpar = ({ dirty, local_rev, ...resto }) => resto
   return {
     versao: BACKUP_VERSION,
     exportado_em: new Date().toISOString(),
-    areas,
-    tarefas_modelo,
-    ciclos,
-    tarefas_geradas,
+    areas: areas.map(limpar),
+    tarefas_modelo: tarefas_modelo.map(limpar),
+    ciclos: ciclos.map(limpar),
+    tarefas_geradas: tarefas_geradas.map(limpar),
   }
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Restaura um backup, SUBSTITUINDO os dados atuais. Aceita backups antigos
+// (IDs numéricos): converte todos os IDs para UUID e refaz as referências.
 export async function importarDados(backup) {
   if (!backup?.versao || !backup?.areas) {
     throw new Error('Arquivo inválido ou incompatível.')
   }
 
-  await db.transaction('rw', [db.areas, db.tarefas_modelo, db.ciclos, db.tarefas_geradas], async () => {
-    await db.areas.clear()
-    await db.tarefas_modelo.clear()
-    await db.ciclos.clear()
-    await db.tarefas_geradas.clear()
+  const mapas = { areas: new Map(), tarefas_modelo: new Map(), ciclos: new Map() }
+  const idNovo = (tabela, antigo) => {
+    if (UUID_RE.test(String(antigo))) return String(antigo)
+    const m = mapas[tabela]
+    if (!m.has(antigo)) m.set(antigo, novoId())
+    return m.get(antigo)
+  }
+  const sem = ({ dirty, local_rev, user_id, updated_at, deleted_at, ...r }) => r
 
-    if (backup.areas?.length) await db.areas.bulkAdd(backup.areas)
-    if (backup.tarefas_modelo?.length) await db.tarefas_modelo.bulkAdd(backup.tarefas_modelo)
-    if (backup.ciclos?.length) await db.ciclos.bulkAdd(backup.ciclos)
-    if (backup.tarefas_geradas?.length) await db.tarefas_geradas.bulkAdd(backup.tarefas_geradas)
+  const areas = (backup.areas || []).map((a, i) => ({
+    ...sem(a),
+    id: idNovo('areas', a.id),
+    ordem: a.ordem ?? i + 1,
+  }))
+  const tarefas_modelo = (backup.tarefas_modelo || []).map((m) => ({
+    ...sem(m),
+    id: idNovo('tarefas_modelo', m.id),
+  }))
+  const ciclos = (backup.ciclos || []).map((c) => ({
+    ...sem(c),
+    id: idNovo('ciclos', c.id),
+    area_id: idNovo('areas', c.area_id),
+  }))
+  const idsCiclos = new Set(ciclos.map((c) => c.id))
+  const idsModelos = new Set(tarefas_modelo.map((m) => m.id))
+  const tarefas_geradas = (backup.tarefas_geradas || [])
+    .map((t) => ({
+      ...sem(t),
+      id: novoIdSeNaoUuid(t.id),
+      ciclo_id: idNovo('ciclos', t.ciclo_id),
+      tarefa_modelo_id:
+        t.tarefa_modelo_id == null ? null : idNovo('tarefas_modelo', t.tarefa_modelo_id),
+    }))
+    .filter((t) => idsCiclos.has(t.ciclo_id))
+    .map((t) => ({ ...t, tarefa_modelo_id: idsModelos.has(t.tarefa_modelo_id) ? t.tarefa_modelo_id : null }))
+
+  await db.transaction('rw', [db.areas, db.tarefas_modelo, db.ciclos, db.tarefas_geradas], async () => {
+    await Promise.all(TABELAS_SYNC.map((t) => db[t].clear()))
+    if (areas.length) await db.areas.bulkAdd(areas)
+    if (tarefas_modelo.length) await db.tarefas_modelo.bulkAdd(tarefas_modelo)
+    if (ciclos.length) await db.ciclos.bulkAdd(ciclos)
+    if (tarefas_geradas.length) await db.tarefas_geradas.bulkAdd(tarefas_geradas)
   })
+}
+
+function novoIdSeNaoUuid(id) {
+  return UUID_RE.test(String(id)) ? String(id) : novoId()
+}
+
+// Banco da versão anterior (IDs numéricos, só local). Se existir e o banco novo
+// estiver vazio, traz os dados para ele (serão enviados ao Supabase no sync).
+const NOME_BANCO_LEGADO = 'TalhaoGoiaba'
+
+export async function legadoDisponivel() {
+  try {
+    return await Dexie.exists(NOME_BANCO_LEGADO)
+  } catch {
+    return false
+  }
+}
+
+export async function migrarLegado() {
+  const legado = new Dexie(NOME_BANCO_LEGADO)
+  try {
+    await legado.open()
+    const ler = (t) => (legado.tables.some((x) => x.name === t) ? legado.table(t).toArray() : [])
+    const [areas, tarefas_modelo, ciclos, tarefas_geradas] = await Promise.all(
+      TABELAS_SYNC.map(ler)
+    )
+    if (!areas.length) return false
+    await importarDados({ versao: BACKUP_VERSION, areas, tarefas_modelo, ciclos, tarefas_geradas })
+    return true
+  } finally {
+    legado.close()
+  }
 }
 
 export async function atualizarStatusAtrasadas() {

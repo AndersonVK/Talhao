@@ -38,7 +38,7 @@ function SemanaArc({ semana, total = TOTAL_SEMANAS }) {
 }
 
 export function Trilho({ onNavigate, onAreaSelect }) {
-  const areas = useLiveQuery(() => db.areas.orderBy('id').toArray())
+  const areas = useLiveQuery(() => db.areas.orderBy('ordem').toArray())
   const ciclosAtivos = useLiveQuery(() => db.ciclos.where('status').equals('ativo').toArray())
   const tarefasGeradas = useLiveQuery(() =>
     db.tarefas_geradas.where('status').anyOf(['pendente', 'atrasado']).toArray()

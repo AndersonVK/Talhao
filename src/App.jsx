@@ -1,5 +1,9 @@
 import { useEffect, useState } from 'react'
-import { inicializarDados } from './db/database'
+import { db, semearDadosIniciais, legadoDisponivel, migrarLegado } from './db/database'
+import { supabase } from './lib/supabase'
+import { sincronizar, iniciarSyncAutomatico } from './db/sync'
+import { Login } from './components/Login'
+import { SyncBar } from './components/SyncBar'
 import { ToastProvider } from './components/Toast'
 import { Painel } from './pages/Painel'
 import { Trilho } from './pages/Trilho'
@@ -54,11 +58,63 @@ export default function App() {
   const [tab, setTab] = useState('painel')
   const [areaDetalhe, setAreaDetalhe] = useState(null)
   const [podaPreArea, setPodaPreArea] = useState(null)
+  const [sessao, setSessao] = useState(undefined) // undefined = verificando, null = sem login
   const [ready, setReady] = useState(false)
+  const [erroInicio, setErroInicio] = useState('')
+  const [tentativa, setTentativa] = useState(0)
 
   useEffect(() => {
-    inicializarDados().then(() => setReady(true))
+    supabase.auth.getSession().then(({ data }) => setSessao(data.session))
+    const { data: sub } = supabase.auth.onAuthStateChange((_evento, nova) => {
+      setSessao(nova)
+      if (!nova) setReady(false)
+    })
+    return () => sub.subscription.unsubscribe()
   }, [])
+
+  const uid = sessao?.user?.id
+
+  // Com login: sincroniza, traz dados antigos do aparelho (se for o caso) ou semeia o calendário
+  useEffect(() => {
+    if (!uid) return
+    let cancelado = false
+    let desligar = null
+    ;(async () => {
+      setErroInicio('')
+      let sincronizou = false
+      try {
+        await sincronizar()
+        sincronizou = true
+      } catch {
+        /* offline ou falha: segue com o que há no aparelho */
+      }
+
+      if ((await db.areas.count()) === 0) {
+        if (!sincronizou) {
+          if (!cancelado) setErroInicio('No primeiro acesso é preciso estar com internet para baixar seus dados.')
+          return
+        }
+        const jaMigrou = localStorage.getItem('talhao_legado_migrado') === '1'
+        if (!jaMigrou && (await legadoDisponivel())) {
+          try {
+            if (await migrarLegado()) localStorage.setItem('talhao_legado_migrado', '1')
+          } catch (e) {
+            console.error('Falha ao migrar dados antigos', e)
+          }
+        }
+        await semearDadosIniciais()
+        sincronizar().catch(() => {})
+      }
+
+      if (cancelado) return
+      desligar = iniciarSyncAutomatico()
+      setReady(true)
+    })()
+    return () => {
+      cancelado = true
+      desligar?.()
+    }
+  }, [uid, tentativa])
 
   function navigate(dest, param) {
     if (dest === 'poda') {
@@ -76,7 +132,19 @@ export default function App() {
     setAreaDetalhe(areaId)
   }
 
-  if (!ready) {
+  if (sessao === null) return <Login />
+
+  if (sessao && erroInicio) {
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24, textAlign: 'center', color: 'var(--text-secondary)' }}>
+        <div style={{ fontSize: 40 }}>📡</div>
+        <div style={{ fontSize: 14 }}>{erroInicio}</div>
+        <button className="btn btn-primary" onClick={() => setTentativa((n) => n + 1)}>Tentar novamente</button>
+      </div>
+    )
+  }
+
+  if (sessao === undefined || !ready) {
     return (
       <div style={{
         flex: 1,
@@ -89,7 +157,7 @@ export default function App() {
       }}>
         <div style={{ fontSize: 40 }}>🌿</div>
         <div style={{ fontSize: 16, fontWeight: 600 }}>Talhão</div>
-        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Iniciando banco de dados…</div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Carregando seus dados…</div>
       </div>
     )
   }
@@ -99,6 +167,7 @@ export default function App() {
   return (
     <ToastProvider>
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <SyncBar />
         {/* Main content */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
           {showDetalhe ? (

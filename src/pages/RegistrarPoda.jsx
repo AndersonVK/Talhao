@@ -6,7 +6,7 @@ import { format } from 'date-fns'
 
 export function RegistrarPoda({ onNavigate, preAreaId }) {
   const toast = useToast()
-  const areas = useLiveQuery(() => db.areas.orderBy('nome').toArray())
+  const areas = useLiveQuery(() => db.areas.orderBy('ordem').toArray())
   const ciclosAtivos = useLiveQuery(() => db.ciclos.where('status').equals('ativo').toArray())
 
   const hoje = new Date().toISOString().split('T')[0]
@@ -15,7 +15,7 @@ export function RegistrarPoda({ onNavigate, preAreaId }) {
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
 
-  const cicloAtivoDaArea = ciclosAtivos?.find((c) => c.area_id === Number(areaId))
+  const cicloAtivoDaArea = ciclosAtivos?.find((c) => c.area_id === areaId)
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -38,7 +38,7 @@ export function RegistrarPoda({ onNavigate, preAreaId }) {
 
     setLoading(true)
     try {
-      await registrarPoda(Number(areaId), dataPoda)
+      await registrarPoda(areaId, dataPoda)
       toast('✓ Poda registrada! Agenda gerada com sucesso.')
       onNavigate('painel')
     } catch (err) {

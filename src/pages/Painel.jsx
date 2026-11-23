@@ -125,8 +125,8 @@ export function Painel({ onNavigate }) {
         </div>
       ) : (
         grupos.map(([areaId, tfs]) => {
-          const area = areaMap[Number(areaId)]
-          const cicloAtivo = Object.values(cicloMap).find((c) => c.area_id === Number(areaId))
+          const area = areaMap[areaId]
+          const cicloAtivo = Object.values(cicloMap).find((c) => c.area_id === areaId)
           const temPraga = tfs.some((t) => modeloMap[t.tarefa_modelo_id]?.tipo === 'monitoramento_praga')
 
           return (
