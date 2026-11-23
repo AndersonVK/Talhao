@@ -1,8 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, calcularSemanaAtual } from '../db/database'
+import { db, calcularSemanaAtual, CICLO_SEMANAS } from '../db/database'
 import { useMemo } from 'react'
 
-const TOTAL_SEMANAS = 36
+const TOTAL_SEMANAS = CICLO_SEMANAS
 
 function SemanaArc({ semana, total = TOTAL_SEMANAS }) {
   const pct = Math.min(semana / total, 1)
@@ -11,8 +11,8 @@ function SemanaArc({ semana, total = TOTAL_SEMANAS }) {
   const offset = circ * (1 - pct)
 
   const cor =
-    semana >= 34 ? 'var(--green-bright)' :
-    semana >= 28 ? 'var(--yellow)' :
+    semana >= CICLO_SEMANAS - 2 ? 'var(--green-bright)' :
+    semana >= CICLO_SEMANAS - 8 ? 'var(--yellow)' :
     'var(--green-mid)'
 
   return (
@@ -123,7 +123,7 @@ export function Trilho({ onNavigate, onAreaSelect }) {
               if (!ciclo) return null
               const atrasadas = atrasadasPorCiclo[ciclo.id] || 0
               const hoje = pendentesHoje[ciclo.id] || 0
-              const pronta = semana >= 35
+              const pronta = semana >= CICLO_SEMANAS
               const classe = atrasadas > 0 ? 'atrasada' : pronta ? 'pronta' : hoje > 0 ? 'urgente' : ''
 
               return (
@@ -135,7 +135,7 @@ export function Trilho({ onNavigate, onAreaSelect }) {
                   <div className="area-nome">{area.nome}</div>
                   <SemanaArc semana={semana} />
                   <div className="area-semana-label">
-                    {pronta ? '🌿 pronta p/ poda' : `sem. ${semana}/36`}
+                    {pronta ? '🌿 pronta p/ poda' : `sem. ${semana}/${CICLO_SEMANAS}`}
                   </div>
                   {atrasadas > 0 && (
                     <div style={{ marginTop: 4 }}>

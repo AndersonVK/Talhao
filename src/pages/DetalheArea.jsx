@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, calcularSemanaAtual } from '../db/database'
+import { db, calcularSemanaAtual, CICLO_SEMANAS } from '../db/database'
 import { TaskItem } from '../components/TaskItem'
 import { useToast } from '../components/Toast'
 import { useMemo, useState } from 'react'
@@ -154,7 +154,7 @@ export function DetalheArea({ areaId, onNavigate }) {
   }
 
   const semanaAtual = cicloAtivo ? calcularSemanaAtual(cicloAtivo.data_poda) : 0
-  const progresso = Math.round((semanaAtual / 36) * 100)
+  const progresso = Math.round((semanaAtual / CICLO_SEMANAS) * 100)
   const tarefasFeitas = tarefas?.filter((t) => t.status === 'feito').length ?? 0
   const tarefasTotal = tarefas?.length ?? 0
 
@@ -216,7 +216,7 @@ export function DetalheArea({ areaId, onNavigate }) {
             <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--green-bright)', lineHeight: 1 }}>
               {semanaAtual}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>de 36 semanas</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>de {CICLO_SEMANAS} semanas</div>
           </div>
         )}
       </div>
@@ -247,7 +247,7 @@ export function DetalheArea({ areaId, onNavigate }) {
             </div>
           </div>
 
-          {semanaAtual >= 35 && (
+          {semanaAtual >= CICLO_SEMANAS && (
             <div className="alert alert-warning" style={{ marginBottom: 12 }}>
               <span>🌿</span>
               <span>Esta área está pronta para uma nova poda.</span>

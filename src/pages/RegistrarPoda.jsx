@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, registrarPoda, calcularSemanaAtual } from '../db/database'
+import { db, registrarPoda, calcularSemanaAtual, CICLO_SEMANAS } from '../db/database'
 import { useState } from 'react'
 import { useToast } from '../components/Toast'
 import { format } from 'date-fns'
@@ -25,7 +25,7 @@ export function RegistrarPoda({ onNavigate, preAreaId }) {
 
     if (cicloAtivoDaArea) {
       const semana = calcularSemanaAtual(cicloAtivoDaArea.data_poda)
-      if (semana < 34) {
+      if (semana < CICLO_SEMANAS - 2) {
         setErro(`Esta área está na semana ${semana}. Encerre o ciclo atual antes de registrar nova poda.`)
         return
       }
@@ -59,7 +59,7 @@ export function RegistrarPoda({ onNavigate, preAreaId }) {
       <div className="page-header">
         <div>
           <div className="page-title">Registrar poda</div>
-          <div className="page-subtitle">Gera automaticamente a agenda de 36 semanas</div>
+          <div className="page-subtitle">Gera automaticamente a agenda de {CICLO_SEMANAS} semanas</div>
         </div>
       </div>
 
@@ -79,7 +79,7 @@ export function RegistrarPoda({ onNavigate, preAreaId }) {
                 return (
                   <option key={a.id} value={a.id}>
                     {a.nome} ({a.qtd_plantas} plantas)
-                    {semana ? ` — sem. ${semana}/36` : ' — sem ciclo'}
+                    {semana ? ` — sem. ${semana}/${CICLO_SEMANAS}` : ' — sem ciclo'}
                   </option>
                 )
               })}
@@ -101,8 +101,8 @@ export function RegistrarPoda({ onNavigate, preAreaId }) {
             <div className="alert alert-warning" style={{ marginBottom: 12 }}>
               <span>⚠</span>
               <div>
-                Área com ciclo ativo (semana {calcularSemanaAtual(cicloAtivoDaArea.data_poda)}/36).
-                {calcularSemanaAtual(cicloAtivoDaArea.data_poda) >= 34
+                Área com ciclo ativo (semana {calcularSemanaAtual(cicloAtivoDaArea.data_poda)}/{CICLO_SEMANAS}).
+                {calcularSemanaAtual(cicloAtivoDaArea.data_poda) >= CICLO_SEMANAS - 2
                   ? ' Pronta para novo ciclo.'
                   : ' Confirme antes de encerrar o ciclo atual.'}
               </div>

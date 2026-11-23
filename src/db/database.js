@@ -17,6 +17,9 @@ export const TABELAS_SYNC = ['areas', 'tarefas_modelo', 'ciclos', 'tarefas_gerad
 
 export const novoId = () => crypto.randomUUID()
 
+// Duração do ciclo produtivo (poda → colheita), em semanas
+export const CICLO_SEMANAS = 37
+
 const emSync = (trans) => trans?.source === 'sync'
 
 // Hooks: toda escrita local marca o registro como pendente de envio (dirty),
@@ -197,7 +200,7 @@ export function calcularSemanaAtual(dataPoda) {
   const poda = new Date(dataPoda + 'T00:00:00')
   const diffMs = hoje - poda
   const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-  return Math.min(Math.floor(diffDias / 7) + 1, 36)
+  return Math.min(Math.floor(diffDias / 7) + 1, CICLO_SEMANAS)
 }
 
 export const BACKUP_VERSION = 1

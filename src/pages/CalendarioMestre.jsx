@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, TIPOS_TAREFA, sincronizarModeloComCiclosAtivos } from '../db/database'
+import { db, TIPOS_TAREFA, CICLO_SEMANAS, sincronizarModeloComCiclosAtivos } from '../db/database'
 import { useState, useRef } from 'react'
 import { useToast } from '../components/Toast'
 import { TipoBadge } from '../components/TipoDot'
@@ -49,8 +49,8 @@ export function CalendarioMestre() {
     const si = Number(form.semana_inicio)
     const sf = Number(form.semana_fim)
     if (!form.titulo.trim()) { setErro('Informe o título.'); return }
-    if (!si || si < 1 || si > 36) { setErro('Semana de início deve ser entre 1 e 36.'); return }
-    if (sf > 36) { setErro('Semana fim deve ser no máximo 36.'); return }
+    if (!si || si < 1 || si > CICLO_SEMANAS) { setErro(`Semana de início deve ser entre 1 e ${CICLO_SEMANAS}.`); return }
+    if (sf > CICLO_SEMANAS) { setErro(`Semana fim deve ser no máximo ${CICLO_SEMANAS}.`); return }
     const sfFinal = sf >= si ? sf : si
     const data = {
       semana_inicio: si,
@@ -114,7 +114,7 @@ export function CalendarioMestre() {
                 <input
                   type="number"
                   className="form-control"
-                  min="1" max="36"
+                  min="1" max={CICLO_SEMANAS}
                   value={form.semana_inicio}
                   onChange={(e) => setForm((f) => ({
                     ...f,
@@ -128,7 +128,7 @@ export function CalendarioMestre() {
                 <input
                   type="number"
                   className="form-control"
-                  min="1" max="36"
+                  min="1" max={CICLO_SEMANAS}
                   value={form.semana_fim}
                   onChange={(e) => setForm((f) => ({ ...f, semana_fim: e.target.value }))}
                 />

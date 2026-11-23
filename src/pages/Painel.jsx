@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, atualizarStatusAtrasadas } from '../db/database'
+import { db, atualizarStatusAtrasadas, calcularSemanaAtual, CICLO_SEMANAS } from '../db/database'
 import { TaskItem } from '../components/TaskItem'
 import { addDays, parseISO } from 'date-fns'
 import { useEffect, useMemo, useState } from 'react'
@@ -138,7 +138,7 @@ export function Painel({ onNavigate }) {
                 </div>
                 {cicloAtivo && (
                   <span className="group-semana">
-                    Semana {calcSemana(cicloAtivo.data_poda)}/36
+                    Semana {calcularSemanaAtual(cicloAtivo.data_poda)}/{CICLO_SEMANAS}
                   </span>
                 )}
               </div>
@@ -157,12 +157,4 @@ export function Painel({ onNavigate }) {
       )}
     </div>
   )
-}
-
-function calcSemana(dataPoda) {
-  const hoje = new Date()
-  hoje.setHours(0, 0, 0, 0)
-  const poda = new Date(dataPoda + 'T00:00:00')
-  const diff = Math.floor((hoje - poda) / (1000 * 60 * 60 * 24))
-  return Math.min(Math.floor(diff / 7) + 1, 36)
 }
